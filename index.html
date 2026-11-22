@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="pl" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pomodoro Las</title>
+<style>
+:root{--bg:#f3f6f1;--card:#ffffff;--text:#14231a;--muted:#62756a;--accent:#2f9e5b;--ring:#dde8e0;--danger:#d9534f;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0c1411;--card:#14201a;--text:#e8f3ec;--muted:#8aa595;--accent:#4ade80;--ring:#223329;--danger:#f0716d}}
+:root[data-theme="dark"]{--bg:#0c1411;--card:#14201a;--text:#e8f3ec;--muted:#8aa595;--accent:#4ade80;--ring:#223329;--danger:#f0716d}
+html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box}
+.app{display:flex;flex-direction:column;gap:16px;padding:16px;max-width:900px;margin:0 auto}
+@media (orientation:landscape) and (min-width:560px){.app{flex-direction:row;align-items:stretch}.app>section{flex:1}}
+.card{background:var(--card);border-radius:24px;padding:18px;box-shadow:0 2px 14px rgba(0,0,0,.18)}
+.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.lvl{font-size:13px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.icon{background:var(--ring);border:0;color:var(--text);width:38px;height:38px;border-radius:50%;font-size:17px}
+.chips{display:flex;gap:8px;justify-content:center;margin:8px 0 14px}
+.chip{border:0;border-radius:999px;padding:9px 16px;font-size:14px;background:var(--ring);color:var(--muted);font-weight:600}
+.chip.on{background:var(--accent);color:#06210f}
+.ringbox{position:relative;width:min(72vw,300px);aspect-ratio:1;margin:0 auto}
+.ringbox svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ringbox circle{fill:none;stroke-width:10}
+#bg{stroke:var(--ring)}
+#fg{stroke:var(--accent);stroke-linecap:round;stroke-dasharray:552.9;stroke-dashoffset:552.9;transition:stroke-dashoffset .3s linear}
+.mid{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+#tree{font-size:62px;line-height:1;transition:transform .6s ease;transform-origin:50% 90%}
+#time{font-size:48px;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:.02em;margin-top:4px}
+#hint{text-align:center;color:var(--muted);font-size:14px;margin:12px 0 4px;min-height:20px}
+.btns{display:flex;gap:10px;justify-content:center;margin-top:10px}
+.btn{border:0;border-radius:18px;padding:15px 34px;font-size:17px;font-weight:700;background:var(--accent);color:#06210f}
+.btn.ghost{background:var(--ring);color:var(--danger)}
+.stats{display:flex;justify-content:space-around;text-align:center;margin-bottom:12px}
+.stats b{display:block;font-size:26px}
+.stats span{font-size:12px;color:var(--muted)}
+.forest{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:4px;font-size:28px;text-align:center;max-height:46vh;overflow-y:auto}
+.forest div{animation:pop .5s ease}
+.empty{grid-column:1/-1;color:var(--muted);font-size:14px;padding:18px 0}
+@keyframes pop{from{transform:scale(.2);opacity:0}to{transform:scale(1);opacity:1}}
+h2{margin:0 0 10px;font-size:16px}
+</style>
+</head>
+<body>
+<main class="app">
+<section class="card">
+  <div class="top"><span class="lvl" id="lvl">Nasiona</span><button class="icon" id="theme" aria-label="Motyw">☾</button></div>
+  <div class="chips" id="chips">
+    <button class="chip on" data-m="focus">Skupienie</button>
+    <button class="chip" data-m="short">Przerwa</button>
+    <button class="chip" data-m="long">Długa</button>
+  </div>
+  <div class="ringbox">
+    <svg viewBox="0 0 200 200"><circle id="bg" cx="100" cy="100" r="88"/><circle id="fg" cx="100" cy="100" r="88"/></svg>
+    <div class="mid"><div id="tree">🌰</div><div id="time">25:00</div></div>
+  </div>
+  <div id="hint"></div>
+  <div class="btns"><button class="btn" id="go">Start</button></div>
+</section>
+<section class="card">
+  <div class="stats">
+    <div><b id="sToday">0</b><span>dziś</span></div>
+    <div><b id="sTotal">0</b><span>razem</span></div>
+    <div><b id="sStreak">0</b><span>dni z rzędu</span></div>
+  </div>
+  <h2>Twój las</h2>
+  <div class="forest" id="forest"></div>
+</section>
+</main>
+<script>
+(function(){
+var KEY="pomodoro-las-v1",DUR={focus:25,short:5,long:15},CIRC=552.9,TREES=["🌲","🌳","🌴","🌵","🌸","🎄"];
+var $=function(i){return document.getElementById(i)};
+var S={trees:[],run:null,mode:"focus",theme:"dark"};
+try{var raw=JSON.parse(localStorage.getItem(KEY)||"{}");for(var k in raw)S[k]=raw[k]}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function dayKey(t){var d=new Date(t);return d.getFullYear()+"-"+(d.getMonth()+1)+"-"+d.getDate()}
+var wake=null;
+function lock(){try{if(navigator.wakeLock&&!wake){navigator.wakeLock.request("screen").then(function(w){wake=w;w.addEventListener("release",function(){wake=null})}).catch(function(){})}}catch(e){}}
+function unlock(){try{if(wake){wake.release();wake=null}}catch(e){}}
+document.addEventListener("visibilitychange",function(){if(document.visibilityState==="visible"&&S.run)lock()});
+function beep(){try{var c=new (window.AudioContext||window.webkitAudioContext)();[0,.25,.5].forEach(function(d,i){var o=c.createOscillator(),g=c.createGain();o.frequency.value=660+i*110;g.gain.value=.15;o.connect(g);g.connect(c.destination);o.start(c.currentTime+d);o.stop(c.currentTime+d+.18)})}catch(e){}try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(e){}}
+function applyTheme(){document.documentElement.setAttribute("data-theme",S.theme);$("theme").textContent=S.theme==="dark"?"☾":"☀"}
+$("theme").onclick=function(){S.theme=S.theme==="dark"?"light":"dark";applyTheme();save()};
+function fmt(ms){var s=Math.max(0,Math.ceil(ms/1000));return String(Math.floor(s/60)).padStart(2,"0")+":"+String(s%60).padStart(2,"0")}
+function todayAlive(){var k=dayKey(Date.now());return S.trees.filter(function(t){return !t.dead&&dayKey(t.t)===k}).length}
+function streak(){var days={};S.trees.forEach(function(t){if(!t.dead)days[dayKey(t.t)]=1});var n=0,d=new Date();if(!days[dayKey(d)])d.setDate(d.getDate()-1);while(days[dayKey(d)]){n++;d.setDate(d.getDate()-1)}return n}
+function drawForest(){
+  var alive=S.trees.filter(function(t){return !t.dead}).length;
+  $("lvl").textContent=alive<5?"Nasiona":alive<20?"Zagajnik":alive<50?"Gaj":"Prawdziwy las";
+  $("sToday").textContent=todayAlive();$("sTotal").textContent=alive;$("sStreak").textContent=streak();
+  var f=$("forest");f.innerHTML="";
+  if(!S.trees.length){f.innerHTML='<div class="empty">Pusto. Skup się przez 25 minut, a zasadzisz pierwsze drzewo.</div>';return}
+  S.trees.slice(-120).forEach(function(t,i,a){var d=document.createElement("div");d.textContent=t.dead?"🥀":t.e;if(i===a.length-1)d.style.animationDuration=".8s";f.appendChild(d)});
+  f.scrollTop=f.scrollHeight;
+}
+function render(){
+  var m=S.mode,total=DUR[m]*60000,rem=total,p=0;
+  if(S.run){rem=S.run.end-Date.now();p=Math.min(1,1-rem/S.run.total)}
+  $("time").textContent=fmt(rem);
+  $("fg").style.strokeDashoffset=CIRC*(1-p);
+  var tr=$("tree");
+  if(m==="focus"){
+    tr.textContent=!S.run?"🌰":p<.2?"🌱":p<.55?"🌿":p<.95?"🪴":S.run.e;
+    tr.style.transform="scale("+(S.run?(.6+p*.6):1)+")";
+    $("hint").textContent=S.run?"Rośnie… nie wychodź z aplikacji!":"Zasadź nasionko i skup się.";
+  }else{
+    tr.textContent="☕";tr.style.transform="scale(1)";
+    $("hint").textContent=S.run?"Odpocznij, wstań, napij się wody.":"Czas na oddech.";
+  }
+  var go=$("go");
+  go.textContent=S.run?(m==="focus"?"Poddaj się":"Pomiń"):"Start";
+  go.className="btn"+(S.run?" ghost":"");
+  document.querySelectorAll(".chip").forEach(function(c){c.classList.toggle("on",c.dataset.m===m)});
+}
+function setMode(m){S.mode=m;S.run=null;unlock();save();render()}
+function finish(){
+  var r=S.run;S.run=null;unlock();beep();
+  if(r.mode==="focus"){
+    S.trees.push({t:Date.now(),e:r.e,dead:false,m:DUR.focus});
+    drawForest();
+    S.mode=todayAlive()%4===0?"long":"short";
+  }else S.mode="focus";
+  save();render();
+}
+$("go").onclick=function(){
+  if(!S.run){
+    S.run={end:Date.now()+DUR[S.mode]*60000,total:DUR[S.mode]*60000,mode:S.mode,e:TREES[Math.floor(Math.random()*TREES.length)],start:Date.now()};
+    lock();save();render();
+  }else if(S.mode==="focus"){
+    if(Date.now()-S.run.start>15000){
+      if(!confirm("Jeśli się poddasz, drzewo uschnie. Na pewno?"))return;
+      S.trees.push({t:Date.now(),dead:true});drawForest();
+    }
+    S.run=null;unlock();save();render();
+  }else{S.mode="focus";S.run=null;unlock();save();render()}
+};
+$("chips").onclick=function(e){var m=e.target.dataset&&e.target.dataset.m;if(!m||m===S.mode)return;
+  if(S.run&&S.mode==="focus"&&!confirm("Przerwać sesję? Drzewo uschnie.")) return;
+  if(S.run&&S.mode==="focus"&&Date.now()-S.run.start>15000){S.trees.push({t:Date.now(),dead:true});drawForest()}
+  setMode(m)};
+setInterval(function(){if(S.run){if(S.run.end-Date.now()<=0)finish();else render()}},250);
+applyTheme();drawForest();if(S.run){if(S.run.end-Date.now()<=0)finish();else lock()}render();
+})();
+</script>
+</body>
+</html>
